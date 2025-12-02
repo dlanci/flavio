@@ -13,6 +13,8 @@ from math import sqrt
 import warnings
 import inspect
 from multiprocessing import Pool
+from multiprocessing.dummy import Pool as ThreadPool 
+import itertools
 from pickle import PicklingError
 from flavio.plots.colors import lighten_color, get_color
 
@@ -500,11 +502,16 @@ def density_contour(x, y, covariance_factor=None, n_bins=None, n_sigma=(1, 2),
     return contour(**data)
 
 
+# def likelihood_contour_data(
+#         log_likelihood,
+#         x_min, x_max, y_min, y_max, *,
+#         xscale='linear', yscale='linear',
+#         n_sigma=1, steps=20, threads=1, pool=None):
 def likelihood_contour_data(
-        log_likelihood,
+        log_likelihood, L, 
         x_min, x_max, y_min, y_max, *,
         xscale='linear', yscale='linear',
-        n_sigma=1, steps=20, threads=1, pool=None):
+        n_sigma=1, dof=2, steps=20, threads=1, pool=None):    
     r"""Generate data required to plot coloured confidence contours (or bands)
     given a log likelihood function.
 
@@ -545,13 +552,16 @@ def likelihood_contour_data(
     if threads == 1:
         @np.vectorize
         def chi2_vect(x, y): # needed for evaluation on meshgrid
-            return -2*log_likelihood([x,y])
+            # return -2*log_likelihood([x,y])
+            return -2*log_likelihood([x,y], L)
         z = chi2_vect(x, y)
     else:
         xy = np.array([x, y]).reshape(2, steps**2).T
-        pool = pool or Pool(threads)
+        # pool = pool or Pool(threads)
+        pool = pool or ThreadPool(threads)
         try:
-            z = -2*np.array(pool.map(log_likelihood, xy )).reshape((steps, steps))
+            # z = -2*np.array(pool.map(log_likelihood, xy )).reshape((steps, steps))
+            z = -2*np.array(pool.starmap(log_likelihood, zip(xy,itertools.repeat(L)) )).reshape((steps, steps))
         except PicklingError:
             pool.close()
             raise PicklingError("When using more than 1 thread, the "
@@ -562,14 +572,16 @@ def likelihood_contour_data(
 
     # get the correct values for 2D confidence/credibility contours for n sigma
     if isinstance(n_sigma, Number):
-        levels = [delta_chi2(n_sigma, dof=2)]
+        # levels = [delta_chi2(n_sigma, dof=2)]
+        levels = [delta_chi2(n_sigma, dof)]
     else:
-        levels = [delta_chi2(n, dof=2) for n in n_sigma]
+        # levels = [delta_chi2(n, dof=2) for n in n_sigma]
+        levels = [delta_chi2(n, dof) for n in n_sigma]
     return {'x': x, 'y': y, 'z': z, 'levels': levels}
 
 
-def likelihood_contour(log_likelihood, x_min, x_max, y_min, y_max,
-              n_sigma=1, steps=20, threads=1,
+def likelihood_contour(log_likelihood, L, x_min, x_max, y_min, y_max,
+              n_sigma=1, dof=2, steps=20, threads=1,
               **kwargs):
     r"""Plot coloured confidence contours (or bands) given a log likelihood
     function.
@@ -589,10 +601,10 @@ def likelihood_contour(log_likelihood, x_min, x_max, y_min, y_max,
     and allow to control the presentation of the plot (see docstring of
     `flavio.plots.plotfunctions.contour`).
     """
-    data = likelihood_contour_data(log_likelihood=log_likelihood,
+    data = likelihood_contour_data(log_likelihood=log_likelihood, L=L,
                                 x_min=x_min, x_max=x_max,
                                 y_min=y_min, y_max=y_max,
-                                n_sigma=n_sigma, steps=steps, threads=threads)
+                                n_sigma=n_sigma, dof=dof, steps=steps, threads=threads)
     data.update(kwargs) #  since we cannot do **data, **kwargs in Python <3.5
     return contour(**data)
 
@@ -678,6 +690,11 @@ def contour(x, y, z, levels, *, z_min=None,
         raise ValueError("The provided minimum `z_min` has to be smaller than "
                          "the smallest `z` value on the grid.")
     z = z - z_min # subtract z minimum to make value of new z minimum 0
+    xmin, ymin = np.unravel_index(np.argmin(z), z.shape)
+    nsteps = z.shape[0]
+    LL_i=np.array([[i,np.argmin(z[i,:])] for i in range(nsteps)])
+    LL_xy=np.array([[x[LL_i[i][0],LL_i[i][1]],y[LL_i[i][0],LL_i[i][1]]] for i in range(nsteps)])
+
     if interpolation_factor > 1:
         x = scipy.ndimage.zoom(x, zoom=interpolation_factor, order=1)
         y = scipy.ndimage.zoom(y, zoom=interpolation_factor, order=1)
@@ -704,12 +721,38 @@ def contour(x, y, z, levels, *, z_min=None,
     if filled:
         ax.contourf(x, y, z, levels=levelsf, **_contourf_args)
     CS = ax.contour(x, y, z, levels=levels, **_contour_args)
+    plt.scatter(x[xmin,ymin],y[xmin,ymin],s=1.8)
+    for i in range(nsteps):
+        plt.scatter(LL_xy[i][0],LL_xy[i][1], color='black',s=0.8)
     if label is not None:
         handle = CS.legend_elements()[0][0]
         handle.set_label(label)
         ax.add_container(handle)
     return CS
 
+def profileLikelihood(x, y, z, *, z_min=None,
+              col=None, color=None, label=None,
+              **kwargs):
+
+    if z_min is None:
+        warnings.warn("The smallest `z` value on the grid will be used as the "
+                      "minimum of the function to plot. This can lead to "
+                      "undesired results if the actual minimum is considerably "
+                      "different from the minimum on the grid. For better "
+                      "precision, the actual minimum should be provided in the "
+                      "`z_min` argument.")
+        z_min = np.min(z) # use minmum on the grid
+    elif np.min(z) < z_min:
+        raise ValueError("The provided minimum `z_min` has to be smaller than "
+                         "the smallest `z` value on the grid.")
+    z = z - z_min # subtract z minimum to make value of new z minimum 0
+    nsteps = z.shape[0]
+    LL_i=np.array([[i,np.argmin(z[i,:])] for i in range(nsteps)])
+    LL_xy=np.array([[x[LL_i[i][0],LL_i[i][1]],y[LL_i[i][0],LL_i[i][1]]] for i in range(nsteps)])
+    ax = plt.gca()
+    ax.plot(LL_xy[:,1],z[LL_i[:,0],LL_i[:,1]])
+
+    return z, LL_i, LL_xy
 
 def flavio_branding(x=0.8, y=0.94, version=True):
     """Displays a little box containing 'flavio'"""

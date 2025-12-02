@@ -412,6 +412,22 @@ def bvll_obs_int_ratio_leptonflavour(func, B, V, l1, l2):
             return num / den
     return fct
 
+def bvll_obs_int_invratio_leptonflavour(func, B, V, l1, l2):
+    def fct(wc_obj, par, q2min, q2max):
+        # ignore QCDF warnings for LFU ratios!
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="The QCDF corrections should not be trusted .*")
+            numobj = BVll_obs_int(func, q2min, q2max, B, V, l1, wc_obj, par)
+            numobj.epsrel = 0.0005
+            num = numobj()
+            if num == 0:
+                return 0
+            denobj = BVll_obs_int(func, q2min, q2max, B, V, l2, wc_obj, par)
+            denobj.epsrel = 0.0005
+            den = denobj()
+            return den / num
+    return fct
+
 def bvll_obs_ratio_leptonflavour(func, B, V, l1, l2):
     def fct(wc_obj, par, q2):
         with warnings.catch_warnings():
@@ -575,6 +591,17 @@ def make_obs_lfur(M, l):
         # add taxonomy for both processes (e.g. B->Vee and B->Vmumu)
         _obs.add_taxonomy(r'Process :: $b$ hadron decays :: FCNC decays :: $B\to V\ell^+\ell^-$ :: $' + _hadr[M]['tex'] +_tex[li]+r"^+"+_tex[li]+r"^-$")
     Prediction(_obs_name, bvll_obs_int_ratio_leptonflavour(dGdq2_ave, _hadr[M]['B'], _hadr[M]['V'], *l))
+
+    # binned ratio of BRs
+    _obs_name = "<Rinv"+l[0]+l[1]+">("+M+"ll)"
+    _obs = Observable(name=_obs_name, arguments=['q2min', 'q2max'])
+    _obs.set_description(r"Inverse ratio of partial branching ratios of $" + _hadr[M]['tex'] +_tex[l[0]]+r"^+ "+_tex[l[0]]+r"^-$" + " and " + r"$" + _hadr[M]['tex'] +_tex[l[1]]+r"^+ "+_tex[l[1]]+"^-$")
+    _obs.tex = r"$\langle R^{-1}_{" + _tex[l[0]] + ' ' + _tex[l[1]] + r"} \rangle(" + _hadr[M]['tex'] + r"\ell^+\ell^-)$"
+    for li in l:
+        # add taxonomy for both processes (e.g. B->Vee and B->Vmumu)
+        _obs.add_taxonomy(r'Process :: $b$ hadron decays :: FCNC decays :: $B\to V\ell^+\ell^-$ :: $' + _hadr[M]['tex'] +_tex[li]+r"^+"+_tex[li]+r"^-$")
+    Prediction(_obs_name, bvll_obs_int_invratio_leptonflavour(dGdq2_ave, _hadr[M]['B'], _hadr[M]['V'], *l))
+
 
     # differential ratio of BRs
     _obs_name = "R"+l[0]+l[1]+"("+M+"ll)"

@@ -191,6 +191,17 @@ def bpll_obs_int_ratio_leptonflavour(func, B, P, lnum, lden):
             return num/denom
     return fct
 
+def bpll_obs_int_invratio_leptonflavour(func, B, P, lnum, lden):
+    def fct(wc_obj, par, q2min, q2max):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="The QCDF corrections should not be trusted .*")
+            num = bpll_obs_int(func, q2min, q2max, wc_obj, par, B, P, lnum, epsrel=0.0005)
+            if num == 0:
+                return 0
+            denom = bpll_obs_int(func, q2min, q2max, wc_obj, par, B, P, lden, epsrel=0.0005)
+            return denom/num
+    return fct
+
 def bpll_obs_ratio_leptonflavour(func, B, P, lnum, lden):
     def fct(wc_obj, par, q2):
         with warnings.catch_warnings():
@@ -304,6 +315,16 @@ for l in [('mu','e'), ('tau','mu'),]:
             # add taxonomy for both processes (e.g. B->Pee and B->Pmumu)
             _obs.add_taxonomy(r'Process :: $b$ hadron decays :: FCNC decays :: $B\to P\ell^+\ell^-$ :: $' + _hadr[M]['tex'] +_tex[li]+r"^+"+_tex[li]+r"^-$")
         Prediction(_obs_name, bpll_obs_int_ratio_leptonflavour(dGdq2_cpaverage, _hadr[M]['B'], _hadr[M]['P'], *l))
+
+        # binned ratio of BRs inverse
+        _obs_name = "<Rinv"+l[0]+l[1]+">("+M+"ll)"
+        _obs = Observable(name=_obs_name, arguments=['q2min', 'q2max'])
+        _obs.set_description(r"Inverse ratio of partial branching ratios of $" + _hadr[M]['tex'] +_tex[l[0]]+r"^+ "+_tex[l[0]]+r"^-$" + " and " + r"$" + _hadr[M]['tex'] +_tex[l[1]]+r"^+ "+_tex[l[1]]+"^-$")
+        _obs.tex = r"$\langle R^{-1}_{" + _tex[l[0]] + ' ' + _tex[l[1]] + r"} \rangle(" + _hadr[M]['tex'] + r"\ell^+\ell^-)$"
+        for li in l:
+            # add taxonomy for both processes (e.g. B->Pee and B->Pmumu)
+            _obs.add_taxonomy(r'Process :: $b$ hadron decays :: FCNC decays :: $B\to P\ell^+\ell^-$ :: $' + _hadr[M]['tex'] +_tex[li]+r"^+"+_tex[li]+r"^-$")
+        Prediction(_obs_name, bpll_obs_int_invratio_leptonflavour(dGdq2_cpaverage, _hadr[M]['B'], _hadr[M]['P'], *l))
 
         # differential ratio of BRs
         _obs_name = "R"+l[0]+l[1]+"("+M+"ll)"

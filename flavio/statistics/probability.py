@@ -1459,7 +1459,10 @@ class MultivariateNormalDistribution(ProbabilityDistribution):
         """Return the upper errors"""
         return nsigma * self.err
 
-
+    def get_cov_mat(self):
+        """Return the covariance matrix"""
+        return self.covariance
+    
 class MultivariateNumericalDistribution(ProbabilityDistribution):
     """A multivariate distribution with PDF specified numerically."""
 
